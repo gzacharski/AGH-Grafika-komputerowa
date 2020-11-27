@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>Lab04_Zacharski_Grzegorz</title>
+    <style>
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+        }
+
+        body {
+            background-color: #ffffff;
+            margin: 0;
+            overflow: hidden;
+            font-family: arial;
+        }
+
+        #blocker {
+            position: absolute;
+
+            width: 100%;
+            height: 100%;
+
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        #instructions {
+            width: 100%;
+            height: 100%;
+
+            display: -webkit-box;
+            display: -moz-box;
+            display: box;
+
+            -webkit-box-orient: horizontal;
+            -moz-box-orient: horizontal;
+            box-orient: horizontal;
+
+            -webkit-box-pack: center;
+            -moz-box-pack: center;
+            box-pack: center;
+
+            -webkit-box-align: center;
+            -moz-box-align: center;
+            box-align: center;
+
+            color: #ffffff;
+            text-align: center;
+
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <script src="three.js"></script>
+    <script src="PointerLockControls.js"></script>
+
+    <div id="blocker">
+        <div id="instructions">
+            <img src="icy-tower.png" alt="IcyTower" width="345" height="294" />
+            <br />
+            <span style="font-size: 40px">Click to play</span>
+            <br />
+            (W, A, S, D = Move, SPACE = Jump, MOUSE = Look around)
+        </div>
+    </div>
+
+    <script>
+        var camera, scene, renderer;
+        var geometry, material, mesh;
+        var controls,
+            time = Date.now();
+
+        var objects = [];
+
+        var ray;
+
+        var movement=0;
+        var movementRatio=0.1;
+
+        var instructions = document.getElementById("instructions");
+
+        // http://www.html5rocks.com/en/tutorials/pointerlock/intro/
+
+        var havePointerLock =
+            "pointerLockElement" in document ||
+            "mozPointerLockElement" in document ||
+            "webkitPointerLockElement" in document;
+
+        if (havePointerLock) {
+            var element = document.body;
+
+            var pointerlockchange = function (event) {
+                if (
+                    document.pointerLockElement === element ||
+                    document.mozPointerLockElement === element ||
+                    document.webkitPointerLockElement === element
+                ) {
+                    controls.enabled = true;
+                } else {
+                    controls.enabled = false;
+
+                    instructions.style.display = "";
+                }
+            };
+
+            var pointerlockerror = function (event) {
+                instructions.style.display = "";
+            };
+
+            // Hook pointer lock state change events
+            document.addEventListener(
+                "pointerlockchange",
+                pointerlockchange,
+                false
+            );
+            document.addEventListener(
+                "mozpointerlockchange",
+                pointerlockchange,
+                false
+            );
+            document.addEventListener(
+                "webkitpointerlockchange",
+                pointerlockchange,
+                false
+            );
+
+            document.addEventListener("pointerlockerror", pointerlockerror, false);
+            document.addEventListener(
+                "mozpointerlockerror",
+                pointerlockerror,
+                false
+            );
+            document.addEventListener(
+                "webkitpointerlockerror",
+                pointerlockerror,
+                false
+            );
+
+            instructions.addEventListener(
+                "click",
+                function (event) {
+                    instructions.style.display = "none";
+
+                    // Ask the browser to lock the pointer
+                    element.requestPointerLock =
+                        element.requestPointerLock ||
+                        element.mozRequestPointerLock ||
+                        element.webkitRequestPointerLock;
+
+                    if (/Firefox/i.test(navigator.userAgent)) {
+                        var fullscreenchange = function (event) {
+                            if (
+                                document.fullscreenElement === element ||
+                                document.mozFullscreenElement === element ||
+                                document.mozFullScreenElement === element
+                            ) {
+                                document.removeEventListener(
+                                    "fullscreenchange",
+                                    fullscreenchange
+                                );
+                                document.removeEventListener(
+                                    "mozfullscreenchange",
+                                    fullscreenchange
+                                );
+
+                                element.requestPointerLock();
+                            }
+                        };
+
+                        document.addEventListener(
+                            "fullscreenchange",
+                            fullscreenchange,
+                            false
+                        );
+                        document.addEventListener(
+                            "mozfullscreenchange",
+                            fullscreenchange,
+                            false
+                        );
+
+                        element.requestFullscreen =
+                            element.requestFullscreen ||
+                            element.mozRequestFullscreen ||
+                            element.mozRequestFullScreen ||
+                            element.webkitRequestFullscreen;
+
+                        element.requestFullscreen();
+                    } else {
+                        element.requestPointerLock();
+                    }
+                },
+                false
+            );
+        } else {
+            instructions.innerHTML =
+                "Your browser doesn't seem to support Pointer Lock API";
+        }
+
+        init();
+        animate();
+        axesHelper();
+
+        function init() {
+            camera = new THREE.PerspectiveCamera(
+                75,
+                window.innerWidth / window.innerHeight,
+                1,
+                1000
+            );
+
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0xB0E0E6, 0, 600);
+
+            var light = new THREE.DirectionalLight(0xff00ff, 1.5);
+            light.position.set(1, 1, 1);
+            scene.add(light);
+
+            var light = new THREE.DirectionalLight(0x3f242d, 0.75);
+            light.position.set(0, -1, 0);
+            scene.add(light);
+
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+
+            const directRedLight = new THREE.DirectionalLight(0x405f5f);
+            directRedLight.position.set(1, 1, -1);
+            scene.add(directRedLight);
+
+            const directGreenLight = new THREE.DirectionalLight(0x5a405a);
+            directGreenLight.position.set(1, 1, -1);
+            scene.add(directGreenLight);
+
+            // const directBlueLight = new THREE.DirectionalLight(0x5f5f40);
+            // directBlueLight.position.set(-1, 1, 1);
+            // scene.add(directBlueLight);
+
+            controls = new THREE.PointerLockControls(camera);
+            scene.add(controls.getObject());
+
+            ray = new THREE.Raycaster();
+            ray.ray.direction.set(0, -1, 0);
+
+
+
+            // floor
+            geometry = new THREE.PlaneGeometry(2000, 2000, 100, 100);
+            geometry.applyMatrix(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
+
+            for (var i = 0, l = geometry.vertices.length; i < l; i++) {
+                var vertex = geometry.vertices[i];
+                vertex.x += Math.random() * 20 - 10;
+                vertex.y += Math.random() * 2;
+                vertex.z += Math.random() * 20 - 10;
+            }
+
+            for (var i = 0, l = geometry.faces.length; i < l; i++) {
+                var face = geometry.faces[i];
+                face.vertexColors[0] = new THREE.Color().setHSL(
+                    Math.random() * 0.2 + 0.7,
+                    0.75,
+                    Math.random() * 0.25 + 0.75
+                );
+                face.vertexColors[1] = new THREE.Color().setHSL(
+                    Math.random() * 0.2 + 0.7,
+                    0.75,
+                    Math.random() * 0.25 + 0.75
+                );
+                face.vertexColors[2] = new THREE.Color().setHSL(
+                    Math.random() * 0.2 + 0.7,
+                    0.75,
+                    Math.random() * 0.25 + 0.75
+                );
+            }
+
+            material = new THREE.MeshBasicMaterial({
+                vertexColors: THREE.VertexColors,
+            });
+
+            mesh = new THREE.Mesh(geometry, material);
+            scene.add(mesh);
+
+            // objects
+            let lastXPosition = 0;
+            let lastRotation = 0;
+            let lastYPosition = 0;
+            let lastZPosition = 0;
+            let alfa = 0;
+
+            for (let j = 0; j < 360; j++) {
+
+
+
+                const x = Math.random() * 20 + 30;
+                const y = Math.random() * 10;
+                const z = Math.random() * 20 + 30;
+
+                const geometry = new THREE.BoxGeometry(x, y, z);
+
+                if (j % 5 !== 0) {
+                    for (var i = 0, l = geometry.faces.length; i < l; i++) {
+                        var face = geometry.faces[i];
+                        face.vertexColors[0] = new THREE.Color("rgb(125, 0, 255)");
+                        face.vertexColors[1] = new THREE.Color("rgb(0, 125, 0)");
+                        face.vertexColors[2] = new THREE.Color("rgb(255, 255, 125)");
+                    }
+
+                    material = new THREE.MeshPhongMaterial({
+                        specular: 0xffffff,
+                        shading: THREE.FlatShading,
+                        vertexColors: THREE.VertexColors,
+                    });
+                } else {
+                    let materialArray = [];
+
+                    for (let i = 0; i < 6; i++) {
+                        materialArray.push(new THREE.MeshBasicMaterial(
+                            { map: THREE.ImageUtils.loadTexture('stone.jpg') }
+                        ));
+                    }
+
+                    material = new THREE.MeshFaceMaterial(materialArray);
+                }
+
+                const mesh = new THREE.Mesh(geometry, material);
+
+                radius = Math.floor(Math.random() * 20) + 30;
+
+                mesh.position.x = radius * Math.sin(alfa);
+
+                lastYPosition += Math.floor(Math.random() * 50) + 10;
+                mesh.position.y = lastYPosition;
+                alfa++;
+                mesh.rotation.y = alfa;
+
+                mesh.position.z = radius * Math.cos(alfa);
+
+                scene.add(mesh);
+
+                if (j % 5 !== 0) {
+                    material.color.setHSL(
+                        Math.random() * 0.2 + 0.5,
+                        0.75,
+                        Math.random() * 0.25 + 0.75
+                    );
+                }
+                objects.push(mesh);
+
+            }
+
+
+            //add icyTower in front of camera
+            icyTower = createMesh(
+                new THREE.PlaneGeometry(2, 4, 32),
+                "icy-tower-creature.png"
+            );
+            icyTower.position.set(0, -1.9, -5);
+
+            camera.add(icyTower);
+
+            //
+
+            renderer = new THREE.WebGLRenderer();
+            renderer.setClearColor( 0xB0E0E6 );
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+            document.body.appendChild(renderer.domElement);
+
+            //
+
+            window.addEventListener("resize", onWindowResize, false);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            movement+=1;
+            requestAnimationFrame(animate);
+            //
+
+            controls.isOnObject(false);
+
+            ray.ray.origin.copy(controls.getObject().position);
+            ray.ray.origin.y -= 10;
+
+            var intersections = ray.intersectObjects(objects);
+
+            if (intersections.length > 0) {
+                var distance = intersections[0].distance;
+
+                if (distance > 0 && distance < 10) {
+                    controls.isOnObject(true);
+                }
+            }
+
+            if(movement%100===0) movementRatio*=-1;
+
+            for(let i=0; i<360; i++){
+                objects[i].position.x+=movementRatio;
+                objects[i].position.z+=movementRatio;
+            }
+            
+
+            controls.update(Date.now() - time);
+
+            renderer.render(scene, camera);
+
+            time = Date.now();
+        }
+
+        function createMesh(geometry, image) {
+            const texture = new THREE.TextureLoader().load(image);
+            const material = new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true,
+            });
+
+            return new THREE.Mesh(geometry, material);
+        }
+
+        function createSpotlight(theColor, theTarget) {
+            const spotLight = new THREE.SpotLight(theColor);
+            spotLight.position.set(-10, 500, 60);
+            spotLight.castShadow = true;
+            spotLight.intensity = 1;
+            spotLight.angle = 0.3;
+            spotLight.penumbra = 0.7;
+            spotLight.shadow.camera.fov = 60;
+            spotLight.shadow.mapSize.width = 2048;
+            spotLight.shadow.mapSize.height = 2048;
+            spotLight.target = theTarget;
+
+            return spotLight;
+        }
+
+        function axesHelper() {
+            //The X axis is red. The Y axis is green. The Z axis is blue.
+            var axesHelper = new THREE.AxesHelper(500);
+            axesHelper.translateY(5);
+            scene.add(axesHelper);
+        }
+    </script>
+</body>
+
+</html>
