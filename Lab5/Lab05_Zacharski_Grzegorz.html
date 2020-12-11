@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Labirynth</title>
+
+    <script type="text/javascript" src="three.min.js"></script>
+    <script type="text/javascript" src="stats.js"></script>
+    <script type="text/javascript" src="physi.js"></script>
+  </head>
+
+  <body>
+    <div id="viewport"></div>
+
+    <script type="text/javascript">
+      "use strict";
+
+      Physijs.scripts.worker = "physijs_worker.js";
+      Physijs.scripts.ammo = "ammo.js";
+
+      var initScene, render, scene, renderer, camera, light, render_stats, physics_stats;
+      var ball, plane, wall;
+      var labirynth;
+
+      var width = 200;
+
+      var clock = new THREE.Clock();
+      var rotationY = 0.001;
+      var rotationZ = 0.001;
+
+      initScene = function () {
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMapEnabled = true;
+        renderer.shadowMapSoft = true;
+        renderer.shadowMapType = THREE.PCFShadowMap;
+        renderer.shadowMapAutoUpdate = true;
+
+        document.getElementById("viewport").appendChild(renderer.domElement);
+
+        render_stats = new Stats();
+        render_stats.domElement.style.position = "absolute";
+        render_stats.domElement.style.top = "0px";
+        render_stats.domElement.style.zIndex = 100;
+        document
+          .getElementById("viewport")
+          .appendChild(render_stats.domElement);
+
+        physics_stats = new Stats();
+        physics_stats.domElement.style.position = "absolute";
+        physics_stats.domElement.style.top = "50px";
+        physics_stats.domElement.style.zIndex = 100;
+        document
+          .getElementById("viewport")
+          .appendChild(physics_stats.domElement);
+
+        scene = new Physijs.Scene();
+        scene.setGravity(new THREE.Vector3(0, -50, 0));
+        scene.addEventListener("update", function () {
+          scene.simulate(undefined, 2);
+          physics_stats.update();
+        });
+
+        camera = new THREE.PerspectiveCamera(
+          45,
+          window.innerWidth / window.innerHeight,
+          1,
+          10000
+        );
+        camera.position.set(100, 200, 300);
+        camera.lookAt(scene.position);
+        scene.add(camera);
+
+        light = createLight(0xffffff);
+        scene.add(light);
+
+        labirynth = buildLabyrinth();
+
+        addBalls();
+
+        requestAnimationFrame(render);
+        scene.simulate();
+      };
+
+      function buildWalls() {
+        var wall, tempWall;
+
+        const height = 0.15 * width;
+        const depth = 0.02 * width;
+
+        //first wall
+        wall = new Physijs.BoxMesh(
+          new THREE.CubeGeometry(width, height, depth),
+          Physijs.createMaterial(
+            new THREE.MeshLambertMaterial({ color: 0x47c454 }),
+            0.4,
+            0.5
+          ),
+          0
+        );
+        wall.position.set(0, 0.5 * (height + depth), 0.5 * width);
+        wall.rotation.set(0, 0, 0);
+        wall.castShadow = true;
+        wall.receiveShadow = true;
+
+        //second wall
+        createWall(
+          wall,
+          false,
+          0xc9d84c,
+          { w: width, h: height, d: depth },
+          { x: 0, y: 0, z: -width }
+        );
+
+        //third wall
+        createWall(
+          wall,
+          true,
+          0xce1cdf,
+          { w: width, h: height, d: depth },
+          { x: -0.5 * width, y: 0, z: -0.5 * width }
+        );
+
+        //fourth wall
+        createWall(
+          wall,
+          true,
+          0x927a7a,
+          { w: width - height * 2, h: height, d: depth },
+          { x: 0.5 * width, y: 0, z: -0.5 * width - height }
+        );
+
+        //inner wall
+        createWall(
+          wall,
+          true,
+          0x927a7a,
+          { w: 0.75 * width, h: height, d: depth },
+          { x: -0.25 * width, y: 0, z: -0.375 * width }
+        );
+        createWall(
+          wall,
+          true,
+          0xce1cdf,
+          { w: 0.75 * width, h: height, d: depth },
+          { x: 0 * width, y: 0, z: -0.625 * width }
+        );
+        createWall(
+          wall,
+          false,
+          0xe3d888,
+          { w: 0.25 * width, h: height, d: depth },
+          { x: 0.375 * width, y: 0, z: -0.65 * width }
+        );
+        createWall(
+          wall,
+          false,
+          0xe3d888,
+          { w: 0.375 * width, h: height, d: depth },
+          { x: 0.1875 * width, y: 0, z: -0.375 * width }
+        );
+
+        return wall;
+      }
+
+      function createWall(
+        parentWall,
+        isPerpendicular,
+        theColor,
+        sizes,
+        coordinates
+      ) {
+        const tempWall = new Physijs.BoxMesh(
+          new THREE.CubeGeometry(sizes.w, sizes.h, sizes.d),
+          Physijs.createMaterial(
+            new THREE.MeshLambertMaterial({ transparent: true, opacity: 0.8, color: theColor }),
+            0.4,
+            0.5
+          ),
+          0
+        );
+        tempWall.position.set(coordinates.x, coordinates.y, coordinates.z);
+        tempWall.rotation.set(0, isPerpendicular === true ? Math.PI / 2 : 0, 0);
+        tempWall.castShadow = true;
+        tempWall.receiveShadow = true;
+        parentWall.add(tempWall);
+      }
+
+      function buildLabyrinth() {
+        var labirynth, walls;
+
+        //create labirynth
+        labirynth = new Physijs.BoxMesh(
+          new THREE.CubeGeometry(width, 0.02 * width, width),
+          Physijs.createMaterial(
+            new THREE.MeshLambertMaterial({ color: 0x66bad1 }),
+            0.4,
+            0.5
+          ),
+          0
+        );
+        labirynth.castShadow = true;
+        labirynth.receiveShadow = true;
+
+        //create walls
+        walls = buildWalls();
+
+        //labirynth.addEventListener('ready',buildLabyrinth());
+
+        labirynth.add(walls);
+        scene.add(labirynth);
+
+        return labirynth;
+      }
+
+      function addBalls() {
+        setInterval(function () {
+          ball = new Physijs.SphereMesh(
+            new THREE.SphereGeometry(Math.random() * (4 - 1) + 6, 16, 16),
+            Physijs.createMaterial(
+              new THREE.MeshLambertMaterial({
+                color: 0x00ffff,
+                reflectivity: 0.8,
+              }),
+              0.1,
+              0.6
+            ),
+            1
+          );
+
+          const r = {
+            x: Math.random() * (Math.PI - Math.PI / 12) + Math.PI / 12,
+            y: Math.random() * (Math.PI - Math.PI / 12) + Math.PI / 12,
+            z: Math.random() * (Math.PI - Math.PI / 12) + Math.PI / 12,
+          };
+
+          ball.rotation.set(r.x, r.y, r.z);
+
+          const position = {
+            x: -25, //+ Math.random() * 5,
+            y: Math.random() * 10 + 150,
+            z: -25, //+ ,//Math.random() * 5,
+          };
+
+          ball.position.set(position.x, position.y, position.z);
+          ball.castShadow = true;
+          ball.receiveShadow = true;
+
+          scene.add(ball);
+        }, 1000);
+      }
+
+      render = function () {
+        for (var i = 5; i < scene.children.length - 5; i++) {
+          var obj = scene.children[i];
+
+          if (obj.position.y <= -50) {
+            scene.remove(obj);
+          }
+        }
+
+        if (
+          labirynth.rotation.z > Math.PI / 24 ||
+          labirynth.rotation.z < -Math.PI / 24
+        ) {
+          rotationZ *= -1;
+        }
+
+        labirynth.rotation.z += rotationZ;
+        labirynth.__dirtyRotation = true;
+
+        if (labirynth.rotation.y > Math.PI || labirynth.rotation.y < -Math.PI) {
+          rotationY *= -1;
+        }
+
+        labirynth.rotation.y += -3 * Math.abs(rotationY);
+        labirynth.__dirtyRotation = true;
+
+        scene.simulate(); //run physics
+        renderer.render(scene, camera); //render the scene
+        requestAnimationFrame(render);
+        render_stats.update();
+      };
+
+      function createLight(color) {
+        light = new THREE.DirectionalLight(color);
+
+        light.position.set(0, 100, 60);
+        light.castShadow = true;
+        light.shadowCameraLeft = -60;
+        light.shadowCameraTop = -60;
+        light.shadowCameraRight = 60;
+        light.shadowCameraBottom = 60;
+        light.shadowCameraNear = 1;
+        light.shadowCameraFar = 1000;
+        light.shadowBias = -0.0001;
+        light.shadowMapWidth = light.shadowMapHeight = 1024;
+        light.shadowDarkness = 0.7;
+
+        return light;
+      }
+
+      window.onload = initScene();
+    </script>
+  </body>
+</html>
